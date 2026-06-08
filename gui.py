@@ -60,7 +60,7 @@ DISEASE_DESCRIPTIONS = {
         "autoimmune conditions, and certain medications. Symptoms include progressive breathlessness "
         "and a dry, persistent cough. Early detection is critical as fibrosis is largely irreversible."
     ),
-    'Lung Cancer/Nodules': (
+    'Pulmonary Nodule or Mass/Lung Cancers': (
         "Lung cancer is the leading cause of cancer-related mortality worldwide. Pulmonary nodules "
         "are small masses of tissue in the lung that may be benign or malignant. Risk factors include "
         "smoking, radon exposure, asbestos, and genetic predisposition. Early-stage detection "
@@ -563,10 +563,8 @@ class LUMENApp(tk.Tk):
         self.model_loaded = False
         self.ct_valid     = False
         self._scan_count  = 0
-
-        # Folder mode state
-        self._folder_files   = []   # list of image paths in loaded folder
-        self._folder_index   = -1   # current index within folder
+        self._folder_files = []
+        self._folder_index = -1
 
         self._style_ttk()
         self._build_ui()
@@ -680,9 +678,8 @@ class LUMENApp(tk.Tk):
         self.analyze_btn.set_enabled(False)
         self.analyze_btn.pack(pady=(0, 6))
 
-        # Previous / Next navigation row (folder mode)
         nav_row = tk.Frame(wrap, bg=WHITE)
-        nav_row.pack(fill='x', pady=(0, 6))
+        nav_row.pack(fill='x', pady=(0, 4))
         self.prev_btn = FlatButton(nav_row, text="◀  Prev", command=self._prev_image,
                                     width=130, height=34)
         self.prev_btn.pack(side='left', padx=(0, 4))
@@ -982,23 +979,38 @@ class LUMENApp(tk.Tk):
             pills = tk.Frame(inner, bg=inner['bg'])
             pills.pack(anchor='w', padx=16, pady=(0, 10))
             for label, data in detected_list:
-                icon = LABEL_ICONS.get(label, '◆')
                 pill = tk.Frame(pills, bg=WHITE, highlightbackground=GREEN_MED,
                                 highlightthickness=1)
                 pill.pack(side='left', padx=(0, 6), pady=2)
-                tk.Label(pill, text=f" {icon} {label} ", font=FONT_TINY,
+                tk.Label(pill, text=f" {label} ", font=FONT_TINY,
                          bg=WHITE, fg=GREEN_DARK, padx=6, pady=3).pack()
         else:
             tk.Label(inner, text="All markers below detection thresholds",
                      font=FONT_SMALL, bg=inner['bg'], fg=TEXT_LIGHT).pack(anchor='w', padx=16, pady=(0, 12))
 
+        not_detected_list = [(l, d) for l, d in sorted_results if not d['detected']]
+
+        # Auto-expand: highest-prob detected label, or highest overall if none detected
+        if detected_list:
+            auto_expand_label = detected_list[0][0]
+        else:
+            auto_expand_label = sorted_results[0][0] if sorted_results else None
+
         if detected_list:
             tk.Label(pad, text="Detected", font=FONT_SUBHEAD,
                      bg=WHITE, fg=GREEN_DARK).pack(anchor='w', pady=(0, 8))
             for label, data in detected_list:
-                self._make_result_card(pad, label, data['prob'], detected=True)
+                self._make_result_card(pad, label, data['prob'], detected=True,
+                                       expanded=(label == auto_expand_label))
 
-    def _make_result_card(self, parent, label, prob, detected):
+        if not_detected_list:
+            tk.Label(pad, text="Not Detected", font=FONT_SUBHEAD,
+                     bg=WHITE, fg=TEXT_LIGHT).pack(anchor='w', pady=(12, 8))
+            for label, data in not_detected_list:
+                self._make_result_card(pad, label, data['prob'], detected=False,
+                                       expanded=(label == auto_expand_label))
+
+    def _make_result_card(self, parent, label, prob, detected, expanded=False):
         outer, inner = self._card(parent, bg=BG_CARD)
         outer.pack(fill='x', pady=(0, 8))
 
@@ -1007,11 +1019,9 @@ class LUMENApp(tk.Tk):
         body = tk.Frame(inner, bg=BG_CARD)
         body.pack(side='left', fill='both', expand=True, padx=14, pady=12)
 
+        # ── Header: label name + % ───────────────────────────────────────────
         top = tk.Frame(body, bg=BG_CARD)
         top.pack(fill='x')
-
-        icon = LABEL_ICONS.get(label, '◆')
-        tk.Label(top, text=icon, font=("Segoe UI", 18), bg=BG_CARD).pack(side='left', padx=(0, 10))
 
         info = tk.Frame(top, bg=BG_CARD)
         info.pack(side='left', fill='x', expand=True)
@@ -1027,31 +1037,58 @@ class LUMENApp(tk.Tk):
         badge_text = "POSITIVE" if detected else "NEGATIVE"
         badge_bg   = GREEN_PALE if detected else BG_CARD_ALT
         badge_fg   = GREEN_DARK if detected else TEXT_LIGHT
-        badge = tk.Label(right_col, text=f" {badge_text} ", font=FONT_TINY,
-                         bg=badge_bg, fg=badge_fg, padx=4, pady=2)
-        badge.pack(anchor='e', pady=(2, 0))
+        tk.Label(right_col, text=f" {badge_text} ", font=FONT_TINY,
+                 bg=badge_bg, fg=badge_fg, padx=4, pady=2).pack(anchor='e', pady=(2, 0))
 
+        # ── Progress bar ─────────────────────────────────────────────────────
         bar_f = tk.Frame(body, bg=BG_CARD)
         bar_f.pack(fill='x', pady=(8, 0))
         bar = ProgressBar(bar_f, height=5)
         bar.pack(fill='x')
         bar.set_value(prob)
 
+        # ── Collapsible clinical overview ────────────────────────────────────
         desc_text = DISEASE_DESCRIPTIONS.get(label, "")
-        if desc_text:
-            desc_container = tk.Frame(body, bg=BG_CARD_ALT,
-                                      highlightbackground=BORDER_MED,
-                                      highlightthickness=1)
-            desc_container.pack(fill='x', pady=(10, 0))
-            header_row = tk.Frame(desc_container, bg=GREEN_PALE)
-            header_row.pack(fill='x')
-            tk.Label(header_row, text="ℹ  Clinical Overview",
-                     font=FONT_TINY, bg=GREEN_PALE, fg=GREEN_DARK,
-                     padx=10, pady=5).pack(side='left')
-            tk.Label(desc_container, text=desc_text,
-                     font=FONT_TINY, bg=BG_CARD_ALT, fg=TEXT_MED,
-                     wraplength=520, justify='left',
-                     padx=10, pady=8).pack(anchor='w')
+        if not desc_text:
+            return
+
+        is_open = [expanded]
+
+        arrow_open  = "▼  Clinical Overview"
+        arrow_close = "▶  Clinical Overview"
+
+        # Toggle button row — always visible
+        toggle_row = tk.Frame(body, bg=BG_CARD, cursor='hand2')
+        toggle_row.pack(fill='x', pady=(8, 0))
+        toggle_lbl = tk.Label(toggle_row,
+                              text=arrow_open if expanded else arrow_close,
+                              font=FONT_TINY, bg=BG_CARD, fg=GREEN_MED, cursor='hand2')
+        toggle_lbl.pack(side='left')
+
+        # Dropdown content — packed below toggle row when open
+        desc_container = tk.Frame(body, bg=BG_CARD_ALT,
+                                  highlightbackground=BORDER_MED,
+                                  highlightthickness=1)
+        tk.Label(desc_container, text=desc_text,
+                 font=FONT_TINY, bg=BG_CARD_ALT, fg=TEXT_MED,
+                 wraplength=520, justify='left',
+                 padx=10, pady=8).pack(anchor='w')
+
+        def toggle(_e=None):
+            if is_open[0]:
+                desc_container.pack_forget()
+                is_open[0] = False
+                toggle_lbl.configure(text=arrow_close)
+            else:
+                desc_container.pack(fill='x', pady=(2, 0))
+                is_open[0] = True
+                toggle_lbl.configure(text=arrow_open)
+
+        toggle_row.bind('<ButtonRelease-1>', toggle)
+        toggle_lbl.bind('<ButtonRelease-1>', toggle)
+
+        if expanded:
+            desc_container.pack(fill='x', pady=(2, 0))
 
     def _run_tool(self, key, label, fn):
         if not self.image_path:
