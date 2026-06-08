@@ -28,11 +28,11 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 LABEL_KEYS  = ['ILD', 'Lung Cancer', 'Normal', 'Tuberculosis', 'COVID', 'Pneumonia']
 LABELS      = [
-    'Pulmonary Fibrosis/ILD',
-    'Lung Cancer/Nodules',
+    'Pulmonary Fibrosis/Interstitial Lung Disease',
+    'Pulmonary Nodule or Mass/Lung Cancers',
     'Normal',
-    'Tuberculosis',
-    'COVID-19',
+    'Infection/Pneumonia',
+    'Infection/COVID-19',
     'Pneumonia',
 ]
 NUM_LABELS  = 6
