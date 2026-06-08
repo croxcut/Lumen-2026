@@ -31,9 +31,9 @@ LABELS      = [
     'Pulmonary Fibrosis/Interstitial Lung Disease',
     'Pulmonary Nodule or Mass/Lung Cancers',
     'Normal',
-    'Infection/Pneumonia',
+    'Cavities/Tuberculosis',
     'Infection/COVID-19',
-    'Pneumonia',
+    'Infection/Pneumonia',
 ]
 NUM_LABELS  = 6
 OUTPUT_CSV  = os.path.join(OUTPUT_DIR, "predictions.csv")
@@ -53,7 +53,7 @@ MODEL_METRICS = {
 }
 
 DISEASE_DESCRIPTIONS = {
-    'Pulmonary Fibrosis/ILD': (
+    'Pulmonary Fibrosis/Interstitial Lung Disease': (
         "Interstitial lung disease (ILD) encompasses a group of disorders causing progressive "
         "scarring of lung tissue. The scarring reduces the lungs' ability to transfer oxygen into "
         "the bloodstream. Common causes include prolonged exposure to hazardous materials, "
@@ -74,21 +74,21 @@ DISEASE_DESCRIPTIONS = {
         "and any relevant symptoms. Routine follow-up per clinical guidelines is still advised "
         "for high-risk populations."
     ),
-    'Tuberculosis': (
+    'Cavities/Tuberculosis': (
         "Tuberculosis (TB) is a contagious bacterial infection caused by Mycobacterium tuberculosis, "
         "primarily affecting the lungs. It remains one of the top infectious disease killers globally. "
         "Radiological features include upper-lobe infiltrates, cavitations, and hilar lymphadenopathy. "
         "Active TB requires a multi-drug antibiotic regimen for 6–9 months. Prompt identification "
         "and isolation are essential to prevent community spread."
     ),
-    'COVID-19': (
+    'Infection/COVID-19': (
         "COVID-19 pneumonia caused by SARS-CoV-2 presents with characteristic bilateral ground-glass "
         "opacities and consolidations on CT, predominantly in peripheral and lower-lobe distributions. "
         "Severity ranges from mild respiratory symptoms to acute respiratory distress syndrome (ARDS). "
         "CT findings can persist weeks after clinical recovery. Imaging plays a key role in assessing "
         "disease extent and monitoring progression or resolution."
     ),
-    'Pneumonia': (
+    'Infection/Pneumonia': (
         "Pneumonia is an acute infection of the lung parenchyma caused by bacteria, viruses, or fungi. "
         "It presents radiologically as lobar or segmental consolidation, air bronchograms, and "
         "increased opacity. Common pathogens include Streptococcus pneumoniae, influenza viruses, and "
@@ -98,12 +98,12 @@ DISEASE_DESCRIPTIONS = {
 }
 
 LABEL_ICONS = {
-    'Pulmonary Fibrosis/ILD': '🫧',
-    'Lung Cancer/Nodules':    '🔴',
-    'Normal':                 '✅',
-    'Tuberculosis':           '🦠',
-    'COVID-19':               '🌐',
-    'Pneumonia':              '💧',
+    'Pulmonary Fibrosis/ILD': '',
+    'Lung Cancer/Nodules':    '',
+    'Normal':                 '',
+    'Tuberculosis':           '',
+    'COVID-19':               '',
+    'Pneumonia':              '',
 }
 
 BG_MAIN      = "#FFFFFF"
@@ -550,7 +550,7 @@ class ToolCard(tk.Frame):
 class LUMENApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("LUMEN — Lung Scan Analysis System")
+        self.title("LUMEN")
         self.geometry("1440x920")
         self.minsize(1200, 780)
         self.configure(bg=BG_MAIN)
@@ -563,6 +563,10 @@ class LUMENApp(tk.Tk):
         self.model_loaded = False
         self.ct_valid     = False
         self._scan_count  = 0
+
+        # Folder mode state
+        self._folder_files   = []   # list of image paths in loaded folder
+        self._folder_index   = -1   # current index within folder
 
         self._style_ttk()
         self._build_ui()
@@ -667,10 +671,30 @@ class LUMENApp(tk.Tk):
                                       width=268, height=38)
         self.browse_btn.pack(pady=(0, 6))
 
+        self.browse_folder_btn = FlatButton(wrap, text="🗂  Browse Folder", command=self._browse_folder,
+                                             width=268, height=38)
+        self.browse_folder_btn.pack(pady=(0, 6))
+
         self.analyze_btn = FlatButton(wrap, text="▶  Run Analysis", command=self._analyze,
                                        primary=True, width=268, height=42)
         self.analyze_btn.set_enabled(False)
-        self.analyze_btn.pack(pady=(0, 10))
+        self.analyze_btn.pack(pady=(0, 6))
+
+        # Previous / Next navigation row (folder mode)
+        nav_row = tk.Frame(wrap, bg=WHITE)
+        nav_row.pack(fill='x', pady=(0, 6))
+        self.prev_btn = FlatButton(nav_row, text="◀  Prev", command=self._prev_image,
+                                    width=130, height=34)
+        self.prev_btn.pack(side='left', padx=(0, 4))
+        self.prev_btn.set_enabled(False)
+        self.next_btn = FlatButton(nav_row, text="Next  ▶", command=self._next_image,
+                                    width=130, height=34)
+        self.next_btn.pack(side='left')
+        self.next_btn.set_enabled(False)
+
+        self._folder_counter_var = tk.StringVar(value="")
+        tk.Label(wrap, textvariable=self._folder_counter_var,
+                 font=FONT_TINY, bg=WHITE, fg=TEXT_LIGHT).pack(pady=(0, 4))
 
         self.progress_var = tk.StringVar(value="")
         self.progress_lbl = tk.Label(wrap, textvariable=self.progress_var,
@@ -796,25 +820,18 @@ class LUMENApp(tk.Tk):
 
         tk.Label(pad, text="Detectable Conditions",
                  font=FONT_SUBHEAD, bg=WHITE, fg=GREEN_DARK).pack(anchor='w', pady=(0, 10))
+
         grid = tk.Frame(pad, bg=WHITE)
         grid.pack(fill='x')
         for col in range(3):
             grid.columnconfigure(col, weight=1)
         for i, label in enumerate(LABELS):
-            m   = MODEL_METRICS.get(label, {})
-            c   = i % 3
-            r   = i // 3
-            outer, inner = self._card(grid, bg=BG_CARD)
-            outer.grid(row=r, column=c, padx=5, pady=5, sticky='ew')
-            icon = LABEL_ICONS.get(label, '◆')
-            top = tk.Frame(inner, bg=BG_CARD)
-            top.pack(fill='x', padx=10, pady=(10, 4))
-            tk.Label(top, text=icon, font=("Segoe UI", 18),
-                     bg=BG_CARD).pack(side='left')
-            tk.Label(top, text=f"AUC {m.get('auc','—')}",
-                     font=FONT_TINY, bg=BG_CARD, fg=GREEN_MED).pack(side='right', pady=(6, 0))
-            tk.Label(inner, text=label, font=FONT_SMALL, bg=BG_CARD,
-                     fg=TEXT_DARK, wraplength=160, justify='left').pack(anchor='w', padx=10, pady=(0, 10))
+            c = i % 3
+            r = i // 3
+            cell = tk.Frame(grid, bg=WHITE)
+            cell.grid(row=r, column=c, padx=4, pady=3, sticky='w')
+            tk.Label(cell, text=label, font=FONT_SMALL,
+                     bg=WHITE, fg=TEXT_MED).pack(anchor='w')
 
     def _browse_file(self):
         path = filedialog.askopenfilename(
@@ -822,7 +839,51 @@ class LUMENApp(tk.Tk):
             filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.tiff"),
                        ("All files", "*.*")])
         if path:
+            self._folder_files = []
+            self._folder_index = -1
+            self._folder_counter_var.set("")
+            self._update_nav_buttons()
             self._set_image(path)
+
+    def _browse_folder(self):
+        folder = filedialog.askdirectory(title="Select Folder of CT Scans")
+        if not folder:
+            return
+        exts = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+        files = sorted([
+            os.path.join(folder, f) for f in os.listdir(folder)
+            if os.path.splitext(f.lower())[1] in exts
+        ])
+        if not files:
+            messagebox.showinfo("No Images", "No supported image files found in that folder.")
+            return
+        self._folder_files = files
+        self._folder_index = 0
+        self._update_nav_buttons()
+        self._set_image(self._folder_files[0])
+
+    def _prev_image(self):
+        if self._folder_files and self._folder_index > 0:
+            self._folder_index -= 1
+            self._update_nav_buttons()
+            self._set_image(self._folder_files[self._folder_index])
+
+    def _next_image(self):
+        if self._folder_files and self._folder_index < len(self._folder_files) - 1:
+            self._folder_index += 1
+            self._update_nav_buttons()
+            self._set_image(self._folder_files[self._folder_index])
+
+    def _update_nav_buttons(self):
+        if not self._folder_files:
+            self.prev_btn.set_enabled(False)
+            self.next_btn.set_enabled(False)
+            self._folder_counter_var.set("")
+            return
+        self.prev_btn.set_enabled(self._folder_index > 0)
+        self.next_btn.set_enabled(self._folder_index < len(self._folder_files) - 1)
+        self._folder_counter_var.set(
+            f"Image {self._folder_index + 1} of {len(self._folder_files)}")
 
     def _set_image(self, path):
         self.image_path   = path
@@ -901,7 +962,6 @@ class LUMENApp(tk.Tk):
 
         sorted_results = sorted(self.results.items(), key=lambda x: x[1]['prob'], reverse=True)
         detected_list  = [(l, d) for l, d in sorted_results if d['detected']]
-        other_list     = [(l, d) for l, d in sorted_results if not d['detected']]
 
         pad = tk.Frame(self.results_inner, bg=WHITE)
         pad.pack(fill='x', padx=24, pady=(20, 0))
@@ -937,11 +997,6 @@ class LUMENApp(tk.Tk):
                      bg=WHITE, fg=GREEN_DARK).pack(anchor='w', pady=(0, 8))
             for label, data in detected_list:
                 self._make_result_card(pad, label, data['prob'], detected=True)
-
-        tk.Label(pad, text="All Scores", font=FONT_SUBHEAD,
-                 bg=WHITE, fg=TEXT_LIGHT).pack(anchor='w', pady=(16, 8))
-        for label, data in sorted_results:
-            self._make_mini_row(pad, label, data['prob'], data['detected'])
 
     def _make_result_card(self, parent, label, prob, detected):
         outer, inner = self._card(parent, bg=BG_CARD)
@@ -997,29 +1052,6 @@ class LUMENApp(tk.Tk):
                      font=FONT_TINY, bg=BG_CARD_ALT, fg=TEXT_MED,
                      wraplength=520, justify='left',
                      padx=10, pady=8).pack(anchor='w')
-
-    def _make_mini_row(self, parent, label, prob, detected):
-        row = tk.Frame(parent, bg=BG_CARD)
-        row.pack(fill='x', pady=2)
-
-        icon = LABEL_ICONS.get(label, '◆')
-        fg   = GREEN_DARK if detected else TEXT_LIGHT
-
-        tk.Label(row, text=icon, font=("Segoe UI", 11), bg=BG_CARD,
-                 width=2).pack(side='left', padx=(10, 4), pady=8)
-        tk.Label(row, text=label, font=FONT_SMALL, bg=BG_CARD,
-                 fg=TEXT_MED if not detected else TEXT_DARK,
-                 width=24, anchor='w').pack(side='left')
-
-        bar = ProgressBar(row, width=130, height=4)
-        bar.pack(side='left', padx=8)
-        bar.set_value(prob)
-
-        tk.Label(row, text=f"{prob:.1%}", font=FONT_MONO,
-                 bg=BG_CARD, fg=fg, width=6).pack(side='left')
-        dot = "●" if detected else "○"
-        tk.Label(row, text=dot, font=FONT_TINY, bg=BG_CARD,
-                 fg=fg).pack(side='left', padx=(4, 10))
 
     def _run_tool(self, key, label, fn):
         if not self.image_path:
@@ -1145,6 +1177,8 @@ class LUMENApp(tk.Tk):
         self.shap_path    = None
         self.bbox_path    = None
         self.ct_valid     = False
+        self._folder_files = []
+        self._folder_index = -1
 
         self.thumb_canvas.clear()
         self.fname_var.set("No file selected")
@@ -1152,6 +1186,8 @@ class LUMENApp(tk.Tk):
         self.analyze_btn.set_enabled(False)
         self.analyze_btn.configure_text("▶  Run Analysis")
         self.progress_var.set("")
+        self._folder_counter_var.set("")
+        self._update_nav_buttons()
 
         for card in self._tool_cards.values():
             card.set_enabled(False)
