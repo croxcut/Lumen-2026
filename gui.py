@@ -990,7 +990,6 @@ class LUMENApp(tk.Tk):
 
         not_detected_list = [(l, d) for l, d in sorted_results if not d['detected']]
 
-        # Auto-expand: highest-prob detected label, or highest overall if none detected
         if detected_list:
             auto_expand_label = detected_list[0][0]
         else:
@@ -1019,7 +1018,6 @@ class LUMENApp(tk.Tk):
         body = tk.Frame(inner, bg=BG_CARD)
         body.pack(side='left', fill='both', expand=True, padx=14, pady=12)
 
-        # ── Header: label name + % ───────────────────────────────────────────
         top = tk.Frame(body, bg=BG_CARD)
         top.pack(fill='x')
 
@@ -1027,8 +1025,8 @@ class LUMENApp(tk.Tk):
         info.pack(side='left', fill='x', expand=True)
         tk.Label(info, text=label, font=FONT_SUBHEAD, bg=BG_CARD, fg=TEXT_DARK).pack(anchor='w')
         m = MODEL_METRICS.get(label, {})
-        tk.Label(info, text=f"F1 {m.get('f1','—')}  ·  AUC {m.get('auc','—')}",
-                 font=FONT_TINY, bg=BG_CARD, fg=TEXT_LIGHT).pack(anchor='w')
+        # tk.Label(info, text=f"F1 {m.get('f1','—')}  ·  AUC {m.get('auc','—')}",
+        #          font=FONT_TINY, bg=BG_CARD, fg=TEXT_LIGHT).pack(anchor='w')
 
         right_col = tk.Frame(top, bg=BG_CARD)
         right_col.pack(side='right', padx=(10, 0))
@@ -1040,14 +1038,12 @@ class LUMENApp(tk.Tk):
         tk.Label(right_col, text=f" {badge_text} ", font=FONT_TINY,
                  bg=badge_bg, fg=badge_fg, padx=4, pady=2).pack(anchor='e', pady=(2, 0))
 
-        # ── Progress bar ─────────────────────────────────────────────────────
         bar_f = tk.Frame(body, bg=BG_CARD)
         bar_f.pack(fill='x', pady=(8, 0))
         bar = ProgressBar(bar_f, height=5)
         bar.pack(fill='x')
         bar.set_value(prob)
 
-        # ── Collapsible clinical overview ────────────────────────────────────
         desc_text = DISEASE_DESCRIPTIONS.get(label, "")
         if not desc_text:
             return
@@ -1057,7 +1053,7 @@ class LUMENApp(tk.Tk):
         arrow_open  = "▼  Clinical Overview"
         arrow_close = "▶  Clinical Overview"
 
-        # Toggle button row — always visible
+    
         toggle_row = tk.Frame(body, bg=BG_CARD, cursor='hand2')
         toggle_row.pack(fill='x', pady=(8, 0))
         toggle_lbl = tk.Label(toggle_row,
@@ -1065,7 +1061,6 @@ class LUMENApp(tk.Tk):
                               font=FONT_TINY, bg=BG_CARD, fg=GREEN_MED, cursor='hand2')
         toggle_lbl.pack(side='left')
 
-        # Dropdown content — packed below toggle row when open
         desc_container = tk.Frame(body, bg=BG_CARD_ALT,
                                   highlightbackground=BORDER_MED,
                                   highlightthickness=1)
